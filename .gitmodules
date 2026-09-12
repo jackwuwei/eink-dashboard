@@ -1,0 +1,4 @@
+[submodule "server"]
+	path = server
+	url = https://github.com/jackwuwei/dashboard-backend.git
+	branch = main
