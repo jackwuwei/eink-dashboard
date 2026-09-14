@@ -2,3 +2,5 @@
 build*/
 backup/*.bin
 preview/*.png
+__pycache__/
+videos/

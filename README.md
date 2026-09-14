@@ -172,7 +172,11 @@ To switch: hold SW3 and reset into setup → change the server URL to the `https
 ## Layout and fonts
 
 - `preview/mock.py` (PIL) is the source of truth for the layout: render coordinate changes locally first, then port them to
-  `ui.cpp` (the coordinates match one to one). `uvx --with pillow python preview/mock.py out.png`
+  `ui.cpp` (the coordinates match one to one). `cd preview && uvx --with pillow python mock.py out.png`
+- The previews draw with the firmware's own u8g2 bitmap fonts (`preview/u8g2font.py` decodes them straight out of `fonts_noto.c`
+  and U8g2's `u8g2_fonts.c`), so what you see is pixel-identical to the panel, text widths included. It looks for
+  `u8g2_fonts.c` in `~/arduino-user/libraries/U8g2_for_Adafruit_GFX/src/`; point `U8G2_FONTS_C` at it if yours is elsewhere.
+  A blank where a character should be means the glyph is missing from the charset — regenerate the fonts (below).
 - All three preview scripts take `--en` to draw the English UI (English runs wider than Chinese — use it to check nothing collides
   after a wording change): `uvx --with pillow python preview/mock.py --en`
 - Fonts: Noto Sans CJK SC converted to u8g2 bitmaps at 14 / 16 / 18 px (`fonts_noto.c`; the character set in
@@ -181,8 +185,7 @@ To switch: hold SW3 and reset into setup → change the server URL to the `https
   name: `cd preview && python3 gen_charset.py && cd .. && BDFCONV=~/.local/bin/bdfconv zsh preview/gen_fonts.sh`
   (build `bdfconv` from `tools/font/bdfconv` in the u8g2 repo, changing `-O4` to `-O2` in its Makefile).
 - Calendar and weather previews: `cd preview && uvx --with pillow --with lunar_python python mock_cal_weather.py [--en]`
-- To measure the real pixel width of an English string (same metrics as the device font):
-  `otf2bdf -p 14 -r 72 -o /tmp/n14.bdf preview/NotoSansCJKsc-Regular.otf`, then sum the `DWIDTH` values from the BDF
+- To measure the real pixel width of a string: `cd preview && uvx --with pillow python -c "from u8g2font import fonts; print(fonts()[14].width('Wk · Fable'))"`
 
 ## Gotchas
 

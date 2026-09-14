@@ -134,13 +134,16 @@ docker compose up -d --build         # HTTP 8090
 
 ## 布局与字体
 
-- 布局以 `preview/mock.py`（PIL）为准：改坐标先在本地渲染确认，再同步到 `ui.cpp`（坐标一一对应）。`uvx --with pillow python preview/mock.py out.png`
+- 布局以 `preview/mock.py`（PIL）为准：改坐标先在本地渲染确认，再同步到 `ui.cpp`（坐标一一对应）。`cd preview && uvx --with pillow python mock.py out.png`
+- 预览图直接用固件里的 u8g2 点阵字库绘制（`preview/u8g2font.py` 从 `fonts_noto.c` 和 U8g2 的 `u8g2_fonts.c` 解码），
+  所以和屏幕逐像素一致，文字宽度也一致。`u8g2_fonts.c` 默认到 `~/arduino-user/libraries/U8g2_for_Adafruit_GFX/src/` 找，
+  路径不同就设环境变量 `U8G2_FONTS_C`。预览里某个字位置空白，说明字库里没这个字，按下面的步骤重新生成字库。
 - 三个预览脚本都支持 `--en`，画英文界面（英文比中文宽，改文案后用它确认不串行）：`uvx --with pillow python preview/mock.py --en`
 - 字体：Noto Sans CJK SC 转成 u8g2 位图，14 / 16 / 18 px（`fonts_noto.c`，字符集 `preview/charset.txt` 由 `preview/gen_charset.py` 从源码 + 服务端 weather.py/config.yaml 自动收集），
   时间用 u8g2 自带 `logisoso38_tn`。源码/服务器名里出现新字时：`cd preview && python3 gen_charset.py && cd .. && BDFCONV=~/.local/bin/bdfconv zsh preview/gen_fonts.sh`
   （`bdfconv` 从 u8g2 仓库 `tools/font/bdfconv` 编译，Makefile 里 `-O4` 改 `-O2`）。
 - 日历/天气页预览：`cd preview && uvx --with pillow --with lunar_python python mock_cal_weather.py [--en]`
-- 量英文文案的真实像素宽（和设备字库一致）：`otf2bdf -p 14 -r 72 -o /tmp/n14.bdf preview/NotoSansCJKsc-Regular.otf`，再按 BDF 里的 `DWIDTH` 求和
+- 量一段文案的真实像素宽：`cd preview && uvx --with pillow python -c "from u8g2font import fonts; print(fonts()[14].width('本周 · Fable'))"`
 
 ## 踩过的坑
 

@@ -1,18 +1,18 @@
-"""Local preview: draw the 400x300 dashboard with PIL using ui.cpp's coordinate system (a macOS CJK font
-approximates the u8g2 wqy bitmap font).
+"""Local preview: draw the 400x300 dashboard with PIL using ui.cpp's coordinate system and the firmware's own
+u8g2 bitmap fonts (see u8g2font.py), so the output is pixel-identical to the device.
 Usage: uvx --with pillow python mock.py [out.png] [--en]
 --en draws the English UI (cfg.lang=1); fields pushed by the server (server names, Claude window names) are
 left as-is, matching the real device."""
 import sys
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageOps
+from u8g2font import fonts, Draw
 EN = "--en" in sys.argv
 def L(zh, en): return en if EN else zh
 W, H = 400, 300
-CJK = "NotoSansCJKsc-Regular.otf"
-DIGIT = "/System/Library/Fonts/Supplemental/Verdana Bold.ttf"
-def f(sz): return ImageFont.truetype(CJK, sz)
-def fd(sz): return ImageFont.truetype(DIGIT, sz)
-img = Image.new("1", (W, H), 1); d = ImageDraw.Draw(img)
+F = fonts()                       # the firmware's own u8g2 bitmap fonts: 14/16/18 px Noto (fonts_noto.c) + logisoso38 (time)
+def f(sz): return F[sz]           # F_SM / F_TXT / F_NAME in ui.cpp
+def fd(sz): return F[sz]          # 38 → F_TIME; 14 → the date is plain F_SM on the device
+img = Image.new("1", (W, H), 1); d = Draw(img)
 def txt(x, y, s, font, fill=0, anchor="ls"): d.text((x, y), s, font=font, fill=fill, anchor=anchor)
 def tw(s, font): return d.textlength(s, font=font)
 def meter(x, y, w, h, pct): d.rectangle([x, y, x+w-1, y+h-1], outline=0); fw=int((w-2)*pct/100); 

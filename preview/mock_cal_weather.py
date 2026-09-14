@@ -1,17 +1,18 @@
 """Calendar-page / weather-page preview (coordinates match ui.cpp's drawCalendarPage / drawWeatherPage exactly)
 Usage: uvx --with pillow --with lunar_python python mock_cal_weather.py [--en]"""
 import re, sys, calendar
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageOps
+from u8g2font import fonts, Draw
 from lunar_python import Solar
 EN = "--en" in sys.argv
 def L(zh, en): return en if EN else zh
 SFX = "_en" if EN else ""
 W, H, TOP = 400, 300, 50
-CJK = "NotoSansCJKsc-Regular.otf"; DIGIT = "/System/Library/Fonts/Supplemental/Verdana Bold.ttf"
-def f(sz): return ImageFont.truetype(CJK, sz)
-def fd(sz): return ImageFont.truetype(DIGIT, sz)
+F = fonts()                       # the firmware's own u8g2 bitmap fonts: 14/16/18 px Noto (fonts_noto.c) + logisoso38 (time)
+def f(sz): return F[sz]           # F_SM / F_TXT / F_NAME in ui.cpp
+def fd(sz): return F[sz]          # 38 → F_TIME; 14 → the date is plain F_SM on the device
 def new():
-    img = Image.new("1", (W, H), 1); d = ImageDraw.Draw(img); return img, d
+    img = Image.new("1", (W, H), 1); d = Draw(img); return img, d
 def icon_wx_mini(d, x, y, code):   # small top-bar weather icon, mirrors ui.cpp iconWxMini
     import math
     def cloud(x, y):
