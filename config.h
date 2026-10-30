@@ -2,7 +2,7 @@
 #pragma once
 #include <Arduino.h>
 
-#define FW_VERSION        "hd-0.1.1"
+#define FW_VERSION        "hd-0.1.7"
 
 // ---- Display (SPI) ----
 #define EPD_CS   15

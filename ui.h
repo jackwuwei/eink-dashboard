@@ -5,7 +5,7 @@
 #include "sensors.h"
 #include "model.h"
 
-enum Page : uint8_t { PAGE_DASH = 0, PAGE_CLAUDE, PAGE_SERVERS, PAGE_WEATHER, PAGE_CALENDAR, PAGE_DEVICE, PAGE_COUNT };
+#include "navigation.h"
 
 struct UiStatus {
   uint8_t netStatus;      // meaning of rtc.netStatus

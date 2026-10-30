@@ -11,6 +11,7 @@
 #include "lunar.h"
 #include "i18n.h"
 #include "weather_icons.h"
+#include "provider_logos.h"
 #include <user_interface.h>
 
 static GxEPD2_BW<GxEPD2_420_Z96, GxEPD2_420_Z96::HEIGHT / 4> display(GxEPD2_420_Z96(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
@@ -148,6 +149,10 @@ static void iconClaude(int cx, int cy, int s) {   // 12-ray starburst (same as t
   }
 }
 
+static void iconCodex(int x, int y) {
+  display.drawBitmap(x, y, CODEX_LOGO, 18, 18, BLACK);
+}
+
 // ---------- Top bar (h=50) ----------
 static void drawTopBar(const ClockNow& t, const SensorData& sd) {
   display.fillRect(0, 0, W, TOP_H, WHITE);
@@ -189,14 +194,24 @@ static const char* netStatusText(uint8_t s) {
 static void drawStatusLine(const Dash& d, const UiStatus& st, int y, const char* left = nullptr) {
   font(F_SM); char b[64];
   String s;
-  if (left) { txt(8, y, left); if (st.showKeysHint) txtRight(W - 8, y, TR(S_KEYS_HINT)); return; }
-  if (st.haveJson) { snprintf(b, sizeof(b), TR(S_UPDATED_AT), st.lastJsonHour, st.lastJsonMinute); s = b; }
-  else s = TR(S_NO_DATA);
-  if (d.valid && d.alert) { snprintf(b, sizeof(b), " · ⚠ %d", d.alert); s += b; }
-  const char* ns = netStatusText(st.netStatus);
-  if (ns) { s += " · "; s += ns; }
-  if (st.showKeysHint) { s += "  "; s += TR(S_KEYS_HINT); }
+  if (left) s = left;
+  else {
+    if (st.haveJson) { snprintf(b, sizeof(b), TR(S_UPDATED_AT), st.lastJsonHour, st.lastJsonMinute); s = b; }
+    else s = TR(S_NO_DATA);
+    if (d.valid && d.alert) { snprintf(b, sizeof(b), " · ⚠ %d", d.alert); s += b; }
+    const char* ns = netStatusText(st.netStatus);
+    if (ns) { s += " · "; s += ns; }
+  }
+  const int right = W - 64;   // reserve the rightmost slot for current / total
+  const int textWidth = right - 8 - (st.showKeysHint ? tw(TR(S_KEYS_HINT)) + 8 : 0);
+  while (s.length() && tw(s.c_str()) > textWidth) {
+    // Remove one UTF-8 character, keeping Chinese status text well formed.
+    unsigned int end = s.length() - 1;
+    while (end && ((uint8_t)s[end] & 0xC0) == 0x80) --end;
+    s.remove(end);
+  }
   txt(8, y, s.c_str());
+  if (st.showKeysHint) txtRight(right, y, TR(S_KEYS_HINT));
 }
 
 // ---------- Dashboard page ----------
@@ -211,7 +226,11 @@ static void drawDashboard(const Dash& d, const UiStatus& st) {
   const int hy = TOP_H + 7;
   iconCpu(130, hy); iconRam(224, hy + 1); iconTemp(315, hy - 1); iconClock(W - 37, hy);   // centered on the uptime column
   // server rows
-  const int ROW = 32; int y = TOP_H + 20;
+  // Make room for both providers without changing the page order.
+  const uint8_t quotaRows = min<uint8_t>(d.nLimits, 3) + max<uint8_t>(1, min<uint8_t>(d.nCodexLimits, 2));
+  const int ROW = quotaRows > 3 ? 28 : 32;
+  const int quotaRow = quotaRows > 3 ? 18 : 24;
+  int y = TOP_H + 20;
   uint8_t n = d.nServers > 4 ? 4 : d.nServers;
   for (uint8_t i = 0; i < n; i++) {
     const DashServer& s = d.servers[i];
@@ -231,28 +250,39 @@ static void drawDashboard(const Dash& d, const UiStatus& st) {
   }
   y += 4 * ROW;
   display.drawFastHLine(0, y, W, BLACK); y += 5;
-  // Claude
-  if (d.nLimits || d.claudeNote[0]) {
+  // Notes alone do not make Claude available. Keep its detail page in place.
+  auto limits = [&](const char* name, const DashLimit* data, uint8_t count, const char* note) {
     font(F_SM);
-    iconClaude(16, y + 12, 16); txt(30, y + 18, "Claude");
-    if (!d.nLimits) { txt(86, y + 18, d.claudeNote); y += 24; }
-    uint8_t m = d.nLimits > 3 ? 3 : d.nLimits;
-    for (uint8_t i = 0; i < m; i++) {
-      const DashLimit& l = d.limits[i]; char b[40];
-      int yy = y + i * 24;
-      txt(86, yy + 18, l.label);
-      meter(174, yy + 7, 76, 12, l.pct);
-      snprintf(b, sizeof(b), "%d%%", l.pct); txt(256, yy + 18, b);
-      snprintf(b, sizeof(b), TR(S_RESET_AT), l.reset); txtRight(W - 8, yy + 18, b);
+    if (data == d.limits) iconClaude(16, y + 9, 16);
+    else iconCodex(7, y);
+    txt(30, y + 15, name);
+    if (!count) {
+      txt(86, y + 15, note[0] ? note : TR(S_NO_DATA));
+      y += quotaRow;
     }
-    y += m * 24 + 1;
+    for (uint8_t i = 0; i < count; i++) {
+      const DashLimit& l = data[i]; char b[40];
+      txt(86, y + 15, l.label);
+      meter(174, y + 3, 76, 10, l.pct);
+      snprintf(b, sizeof(b), "%d%%", l.pct); txt(256, y + 15, b);
+      txtRight(W - 8, y + 15, l.reset);
+      y += quotaRow;
+    }
     display.drawFastHLine(0, y, W, BLACK);
-  }
+  };
+  if (d.nLimits) limits("Claude", d.limits, min<uint8_t>(d.nLimits, 3), "");
+  limits("Codex", d.codexLimits, min<uint8_t>(d.nCodexLimits, 2), d.codexNote);
   drawStatusLine(d, st, H - 7);
 }
 
 // ---------- Detail pages (coordinates in preview/mock_pages.py) ----------
-static void pageTitle(const char* t) { fg(BLACK); font(F_TXT); txt(8, TOP_H + 24, t); display.drawFastHLine(0, TOP_H + 30, W, BLACK); }
+static void pageTitle(const char* t, uint8_t logo = 0) {
+  fg(BLACK); font(F_TXT);
+  if (logo == 1) iconClaude(16, TOP_H + 17, 16);
+  if (logo == 2) iconCodex(7, TOP_H + 7);
+  txt(logo ? 30 : 8, TOP_H + 24, t);
+  display.drawFastHLine(0, TOP_H + 30, W, BLACK);
+}
 
 static void drawServersPage(const Dash& d, const UiStatus& st) {
   pageTitle(TR(S_T_SERVERS));
@@ -277,18 +307,29 @@ static void drawServersPage(const Dash& d, const UiStatus& st) {
   }
   drawStatusLine(d, st, H - 7);
 }
-static void drawClaudePage(const Dash& d, const UiStatus& st) {
-  pageTitle(TR(S_T_CLAUDE));
-  int y = TOP_H + 44; char b[40]; 
-  if (d.claudeNote[0]) { font(F_SM); txt(8, y + 16, d.claudeNote); y += 24; }
-  for (uint8_t i = 0; i < d.nLimits && y + 40 < H - 20; i++) {
-    const DashLimit& l = d.limits[i];
-    font(F_TXT); txt(8, y + 16, l.label);
-    font(F_SM); snprintf(b, sizeof(b), TR(S_RESET_AT), l.reset); txtRight(W - 8, y + 16, b);
-    meter(8, y + 24, 330, 16, l.pct);
-    font(F_TXT); snprintf(b, sizeof(b), "%d%%", l.pct); txtRight(W - 8, y + 38, b);
-    y += 56;
-  }
+static void drawAiPage(const Dash& d, const UiStatus& st) {
+  pageTitle(TR(S_T_AI));
+  int y = TOP_H + 40;
+  auto provider = [&](const char* name, const DashLimit* data, uint8_t count, bool claude) {
+    if (!count) return;
+    font(F_SM);
+    for (uint8_t i = 0; i < count; ++i) {
+      const DashLimit& l = data[i]; char b[12];
+      if (!i) {
+        if (claude) iconClaude(16, y + 10, 16);
+        else iconCodex(7, y + 1);
+        txt(30, y + 16, name);
+      }
+      txt(86, y + 16, l.label);
+      meter(174, y + 5, 76, 12, l.pct);
+      snprintf(b, sizeof(b), "%u%%", l.pct); txt(256, y + 16, b);
+      txtRight(W - 8, y + 16, l.reset);
+      y += 28;
+    }
+    display.drawFastHLine(0, y - 3, W, BLACK);
+  };
+  provider("Claude", d.limits, min<uint8_t>(d.nLimits, 4), true);
+  provider("Codex", d.codexLimits, min<uint8_t>(d.nCodexLimits, 2), false);
   drawStatusLine(d, st, H - 7);
 }
 static void drawDevicePage(const Dash& d, const UiStatus& st, const SensorData& sd) {
@@ -387,14 +428,22 @@ static void drawWeatherPage(const Dash& d, const UiStatus& st) {
 
 static void drawContent(const Dash& d, const UiStatus& st, Page page) {
   display.fillRect(0, TOP_H + 1, W, H - TOP_H - 1, WHITE);
+  page = pageNormalize(d, page);
   switch (page) {
     case PAGE_CALENDAR: drawCalendarPage(d, st, g_now); break;
     case PAGE_WEATHER:  drawWeatherPage(d, st); break;
     case PAGE_SERVERS: drawServersPage(d, st); break;
-    case PAGE_CLAUDE:  drawClaudePage(d, st); break;
+    case PAGE_AI:      drawAiPage(d, st); break;
     case PAGE_DEVICE:  drawDevicePage(d, st, *g_sd); break;
     default: drawDashboard(d, st); break;
   }
+  // Share the same visibility rules with navigation: current / visible total.
+  display.fillRect(W - 52, H - 22, 52, 22, WHITE);
+  fg(BLACK); font(F_SM);
+  char number[12];
+  snprintf(number, sizeof(number), "%u/%u", pageNumber(d, page), pageTotal(d));
+  txtRight(W - 8, H - 7, number);
+
 }
 
 template <typename F> static void paged(F draw) { display.firstPage(); do { draw(); keysPoll(); } while (display.nextPage()); }

@@ -88,7 +88,7 @@ def icon_clock(x, y): # clock 14x14
     d.ellipse([x, y, x+13, y+13], outline=0); d.line([x+7, y+3, x+7, y+7], fill=0); d.line([x+7, y+7, x+10, y+9], fill=0)
 icon_cpu(130, hy); icon_ram(224, hy+1); icon_temp(315, hy-1); icon_clock(W-37, hy)
 
-y = TOP + 20; ROW = 32
+y = TOP + 20; ROW = 32 if "--no-claude" in sys.argv else 28
 for i, (n, cpu, mem, t, up) in enumerate(servers):
     ry = y + i*ROW
     txt(8, ry+23, n, f(18))
@@ -99,26 +99,38 @@ for i, (n, cpu, mem, t, up) in enumerate(servers):
 y += 4*ROW
 d.line([0, y, W, y], fill=0); y += 5
 
-# ---------- Claude, 3 rows x 24 ----------
+# ---------- Subscription usage (same row budget as ui.cpp) ----------
 limits = [("5 小时窗口", 36, "02:19"), ("本周全部", 5, "周三 05:59"), ("本周 · Fable", 9, "周三 05:59")]
 if EN: limits = [("5h window", 36, "02:19"), ("Week · all", 5, "Wed 05:59"), ("Wk · Fable", 9, "Wed 05:59")]
-for i, (l, pct, r) in enumerate(limits):
-    yy = y + i*24
-    if i == 0:
+if "--no-claude" in sys.argv: limits = []
+codex = [("5h", 45, "19:00"), ("Week", 62, "11-02 08:00")]
+quota_row = 18 if len(limits) + len(codex) > 3 else 24
+for name, rows in [("Claude", limits), ("Codex", codex)]:
+    if not rows: continue
+    if name == "Claude":
         import math
-        cx, cy, S = 8 + 8, yy + 12, 16   # 16px starburst
         for k in range(12):
-            ang = math.radians(k * 30 + 15); ro = S * (0.48 if k % 2 == 0 else 0.36); ri = S * 0.10
-            d.line([(cx + ri*math.cos(ang), cy + ri*math.sin(ang)), (cx + ro*math.cos(ang), cy + ro*math.sin(ang))], fill=0, width=2)
-        txt(30, yy+18, "Claude", f(14))
-    txt(86, yy+18, l, f(14))
-    meter(174, yy+7, 76, 12, pct)
-    txt(256, yy+18, f"{pct}%", f(14))
-    txt(W-8, yy+18, L(f"{r} 重置", f"resets {r}"), f(14), anchor="rs")
-y += 3*24 + 1
-d.line([0, y, W, y], fill=0)
+            a = math.radians(k*30+15); ro = 16*(.48 if k%2==0 else .36); ri = 1.6
+            x0, y0 = int(16+ri*math.cos(a)), int(y+9+ri*math.sin(a))
+            x1, y1 = int(16+ro*math.cos(a)), int(y+9+ro*math.sin(a))
+            d.line([(x0,y0),(x1,y1)], fill=0); d.line([(x0+1,y0),(x1+1,y1)], fill=0)
+    else:
+        import re
+        from pathlib import Path
+        raw = bytes(int(v,16) for v in re.findall(r"0x([0-9a-f]{2})", (Path(__file__).resolve().parent.parent / "provider_logos.h").read_text()))
+        for iy in range(18):
+            for ix in range(18):
+                if raw[iy*3+ix//8] & (128 >> (ix%8)): d.point((7+ix,y+iy), fill=0)
+    txt(30, y+15, name, f(14))
+    for label, pct, reset in rows:
+        txt(86, y+15, label, f(14)); meter(174, y+3, 76, 10, pct)
+        txt(256, y+15, f"{pct}%", f(14))
+        txt(W-8, y+15, reset, f(14), anchor="rs")
+        y += quota_row
+    d.line([0, y, W, y], fill=0)
 
 # ---------- Status line ----------
+txt(W-8, H-7, "1/6", f(14), anchor="rs")
 txt(8, H-7, L("更新 16:25", "Upd 16:25"), f(14))   # inside the interactive window the key hints also appear on the right
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]

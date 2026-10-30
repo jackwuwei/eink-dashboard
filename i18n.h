@@ -30,6 +30,7 @@ enum Lang : uint8_t { LANG_ZH = 0, LANG_EN = 1 };
   /* Detail page titles */                                                                                   \
   X(S_T_SERVERS,         "服务器详情",                  "Servers")                                           \
   X(S_T_CLAUDE,          "Claude 用量",                 "Claude Usage")                                      \
+  X(S_T_AI,              "AI 用量",                     "AI Usage")                                          \
   X(S_T_DEVICE,          "设备信息",                    "Device")                                            \
   X(S_T_CALENDAR,        "日历",                        "Calendar")                                          \
   X(S_T_WEATHER,         "天气",                        "Weather")                                           \

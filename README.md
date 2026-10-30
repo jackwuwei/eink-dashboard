@@ -64,6 +64,18 @@ Serial log at 115200 (TX only — RX is GPIO3, which is key 3).
 **Rolling back to the original weather firmware**: `backup/flash_full_4MB_*.bin` is a full 4 MB dump taken before flashing;
 `esptool.py --baud 115200 write_flash 0x0 backup/flash_full_4MB_….bin` restores it as it was.
 
+## Wireless firmware updates (web OTA)
+
+Flash this OTA-capable firmware over USB once. For subsequent updates:
+
+1. Hold SW3 while pressing reset to enter provisioning mode.
+2. Join `ESP8266 E-Paper` (password `333333333`) and open `http://192.168.3.3/`.
+3. Under **Firmware update**, select the built `build/eink-dashboard.ino.bin` and click **Upload & update**.
+4. Keep power stable until the success message and automatic restart. Device settings are retained.
+
+Uploads are available through the device hotspot in provisioning mode. Normal dashboard sleep does not accept updates. Sleep is suspended during upload; failed uploads can be retried. Use a sketch binary for this board with the same 4 MB / 2 MB filesystem layout and enough free OTA staging space, never a full flash backup or filesystem image. Low battery and insufficient space reject an update. This is local wireless upload; it does not automatically download releases from the internet.
+
+
 ## First-time setup
 
 1. The first power-up goes straight into setup mode. To get back into it later: hold **SW3**, tap **SW1**, and keep holding SW3 for another 2 seconds. The screen shows the hotspot details
@@ -121,11 +133,12 @@ Notes:
 |---|---|
 | SW1 (reset) | Refresh now (fetch + a full black/white flash to clear ghosting + redraw), then a 20 s interactive window with `[2]Next [3]Prev` in the status line |
 | Hold SW3 + SW1 | Setup mode: **hold SW3 → tap SW1 and release it → keep SW3 down for another 2 s** (keys are read 0.3 s after boot) |
-| SW2 short press | Next page: dashboard → Claude → servers → weather → calendar → device → dashboard |
+| SW2 short press | Next page: dashboard → AI usage → servers → weather → calendar → device → dashboard |
 | SW3 short press | Previous page |
 | SW2 long press | Toggle the battery readout (percent / volts) |
 | SW3 long press | Fetch from the server right now |
 
+- Claude and Codex share the AI usage page immediately after the dashboard. Providers without usage data are hidden; the AI page is skipped when neither has data. Device information is always the last page; the bottom-right counter shows the current page and the visible page total.
 - Each press extends the interactive window by 20 s. Presses are remembered for the whole time the device is awake (during a
   fetch or a refresh) and act as soon as the redraw finishes; after 20 s idle it returns to the dashboard and sleeps
 - The small side key next to the USB port is wired in parallel with SW2. Only SW1 wakes the device from deep sleep

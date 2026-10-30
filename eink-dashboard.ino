@@ -102,10 +102,10 @@ static void interactive() {
   while (k) {
     touched = true;
     LOG("key %d %s", k, lp ? "long" : "short");
-    if (k == 2 && !lp)      { page = (Page)((page + 1) % PAGE_COUNT); uiDrawContentOnly(dash, makeStatus(true), page); }          // next page
-    else if (k == 3 && !lp) { page = (Page)((page + PAGE_COUNT - 1) % PAGE_COUNT); uiDrawContentOnly(dash, makeStatus(true), page); } // previous page
+    if (k == 2 && !lp)      { page = pageStep(dash, page, true); uiDrawContentOnly(dash, makeStatus(true), page); }          // next page
+    else if (k == 3 && !lp) { page = pageStep(dash, page, false); uiDrawContentOnly(dash, makeStatus(true), page); } // previous page
     else if (k == 2)        { cfg.batShowPercent = !cfg.batShowPercent; settingsSave(); uiDrawTopBarOnly(now, sd); }            // long press: battery display style
-    else if (k == 3)        { networkRound(false); ensureDash(); uiDrawContentOnly(dash, makeStatus(true), page); }                // long press: refresh from the network now
+    else if (k == 3)        { networkRound(false); ensureDash(); page = pageNormalize(dash, page); uiDrawContentOnly(dash, makeStatus(true), page); }                // long press: refresh from the network now
     k = keysPending();
     if (!k) k = keysWait(INTERACT_WINDOW_MS, lp);
   }

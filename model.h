@@ -26,6 +26,8 @@ struct Dash {
   uint8_t nServers; DashServer servers[6];
   uint8_t nLimits;  DashLimit  limits[4];
   char claudeNote[40];
+  uint8_t nCodexLimits; DashLimit codexLimits[2];
+  char codexNote[40];
   uint8_t nEnv;     DashEnv env[4];
   char title[24];
   Weather wx;

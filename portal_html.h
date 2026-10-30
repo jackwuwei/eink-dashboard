@@ -34,10 +34,13 @@ button.sec{background:#888}button.warn{background:#c33}#msg{white-space:pre-wrap
 <div class="row"><div><label data-i="nstart">夜间开始（时）</label><input id="nstart" type="number" min="0" max="23" value="0"></div><div><label data-i="nend">夜间结束（时）</label><input id="nend" type="number" min="0" max="23" value="6"></div></div>
 <div class="chk"><input type="checkbox" id="ntop" checked><label for="ntop" style="margin:0" data-i="ntopLbl">夜间仍每分钟刷新时间/温湿度</label></div>
 <div class="row"><div><label data-i="batLbl">电量显示</label><select id="bat"><option value="1" data-i="batPct">百分比</option><option value="0" data-i="batV">电压</option></select></div><div><label data-i="rotLbl">屏幕方向</label><select id="rot"><option value="0" data-i="rot0">正常</option><option value="2" data-i="rot2">旋转 180°</option></select></div></div></section>
+<section><h2 data-i="otaTitle">固件在线更新</h2><small data-i="otaHint">连接设备热点后上传本设备的固件 .bin；请保持供电，完成后自动重启，保留配置。</small>
+<input id="firmware" type="file" accept=".bin"><button id="updateBtn" onclick="updateFirmware()" data-i="otaBtn">上传并更新</button><div id="otaMsg" role="status"></div></section>
 <section><button onclick="save()" data-i="saveBtn">保存并连接</button> <button class="warn" onclick="doreset()" data-i="resetBtn">恢复出厂</button>
 <div id="msg" data-i="loading">加载中…</div><small id="dev"></small></section></main>
 <script>
 const I={
+otaTitle:['固件在线更新','Firmware update'],otaHint:['连接设备热点后上传本设备的固件 .bin；请保持供电，完成后自动重启，保留配置。','Connect to the device hotspot and upload firmware .bin for this board. Keep power connected. Settings are retained; the device restarts on success.'],otaBtn:['上传并更新','Upload & update'],otaPick:['请选择 .bin 固件','Select a firmware .bin'],otaBusy:['正在上传，请勿断电：','Uploading, keep power connected: '],otaDone:['更新成功，设备正在重启','Update complete, restarting'],otaFail:['更新失败：','Update failed: '],otaNetwork:['连接中断，请重新连接热点并检查设备版本','Connection lost; reconnect to the hotspot and check the firmware version'],
 title:['墨水屏看板 配置','E-Paper Dashboard Setup'],h1:['墨水屏 Homelab 看板','E-Paper Homelab Dashboard'],langLbl:['语言 / Language','语言 / Language'],
 rescan:['重新扫描','Rescan'],ssid:['WiFi 名称','WiFi name'],pass:['WiFi 密码','WiFi password'],
 passHint:['开放网络（无 🔒）留空；网页认证的账号填下面','Leave empty for open networks (no 🔒); portal logins go below'],
@@ -69,7 +72,7 @@ wifiOk:['WiFi 已连接 IP ','WiFi connected, IP '],rebooting:['\n设备 5 秒�
 wifiFail:['WiFi 连接失败，请检查名称/密码后重试','WiFi connection failed - check the name/password'],waitTimeout:['等待超时，请查看屏幕提示','Timed out - check the screen'],
 confReset:['清除全部设置？','Erase all settings?'],resetDone:['已恢复出厂，设备将重启','Factory reset done, rebooting'],
 devInfo:['固件 %1  电池 %2V  温度 %3°C 湿度 %4%  时钟芯片 %5','FW %1  battery %2V  %3°C %4% RH  RTC chip %5'],rtcOk:['正常','ok'],rtcNo:['未检测到','not found']};
-let LG=0,NETS=null;
+let LG=0,NETS=null,updateToken='';
 const $=i=>document.getElementById(i);const t=k=>(I[k]||['',''])[LG];const msg=s=>$('msg').textContent=s;
 function paint(){document.title=t('title');document.documentElement.lang=LG?'en':'zh';
 document.querySelectorAll('[data-i]').forEach(e=>{if(e.id!='msg'||!e.dataset.done)e.textContent=t(e.dataset.i)});
@@ -88,7 +91,7 @@ if(!NETS){s.innerHTML=`<option value="">${t(NETS===null?'scanning':'scanFail')}<
 s.innerHTML=`<option value="">${t('pickWifi')}</option>`+NETS.map(n=>`<option value="${n.s}" data-e="${n.e?1:0}">${n.s} (${n.r}dBm${n.e?' 🔒':''})</option>`).join('');s.value=v}
 async function scan(){NETS=null;render();try{NETS=await(await fetch('/api/scan')).json()}catch(e){NETS=0}render()}
 function say(s){$('msg').dataset.done=1;msg(s)}
-async function load(){try{const c=await(await fetch('/api/config')).json();setlg(c.lang||0);
+async function load(){try{const c=await(await fetch('/api/config')).json();setlg(c.lang||0);updateToken=c.updateToken||'';
 for(const k of['ssid','url','poll','npoll','nstart','nend','purl','puser','pfields','pextra','pok','fp'])if(c[k]!==undefined)$(k).value=c[k];
 $('tlsmode').value=c.tlsMode||0;$('bat').value=c.bat;$('rot').value=c.rot;$('ntop').checked=!!c.ntop;$('pen').checked=!!c.pen;tlsvis();
 $('dev').textContent=t('devInfo').replace('%1',c.fw).replace('%2',c.vbat).replace('%3',c.t).replace('%4',c.h).replace('%5',c.rtc?t('rtcOk'):t('rtcNo'));
@@ -97,6 +100,18 @@ async function test(){const f=form();const v=valid(f);if(v)return say(v);say(t('
 say(`${t('resHead')}: ${r.res}\nHTTP ${r.code}  ${t('took')} ${r.ms} ms${r.rev?'  rev '+r.rev:''}${r.ip?'  IP '+r.ip:''}\n${r.err||''}${r.res=='portal'?'\n'+t('hPortal'):''}${r.res=='portal-login-fail'?'\n'+t('hLogin'):''}${r.res=='tls-cert'?'\n'+t('hCert'):''}`)}catch(e){say(t('testErr')+e)}}
 async function save(){const f=form();const v=valid(f);if(v)return say(v);say(t('saving'));const r=await post('/api/save',f);if(!r.ok)return say(t('saveFail'));say(t('saved'));
 for(let i=0;i<40;i++){await new Promise(r=>setTimeout(r,1000));try{const s=await(await fetch('/api/status')).json();if(s.sta=='connected'){say(t('wifiOk')+s.ip+t('rebooting'));return}if(s.sta=='failed'){say(t('wifiFail'));return}}catch(e){}}say(t('waitTimeout'))}
+function updateFirmware(){
+const file=$('firmware').files[0],out=$('otaMsg');
+if(!file||!file.name.endsWith('.bin')||!file.size){out.textContent=t('otaPick');return}
+const buttons=[...document.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
+const xhr=new XMLHttpRequest();xhr.open('POST','/api/update');xhr.setRequestHeader('X-Update-Token',updateToken);xhr.timeout=180000;
+out.textContent=t('otaBusy')+'0%';
+xhr.upload.onprogress=e=>{if(e.lengthComputable)out.textContent=t('otaBusy')+Math.round(e.loaded/e.total*100)+'%'};
+const failed=s=>{out.textContent=t('otaFail')+s;buttons.forEach(b=>b.disabled=false)};
+xhr.onload=()=>{try{const r=JSON.parse(xhr.responseText);if(xhr.status==200&&r.ok)out.textContent=t('otaDone');else failed(r.error||xhr.status)}catch(e){failed(t('otaNetwork'))}};
+xhr.onerror=xhr.ontimeout=()=>failed(t('otaNetwork'));
+const data=new FormData();data.append('firmware',file);xhr.send(data);
+}
 function doreset(){if(confirm(t('confReset')))post('/api/reset',{}).then(()=>say(t('resetDone')))}
 paint();load();scan();
 </script></body></html>)HTML";

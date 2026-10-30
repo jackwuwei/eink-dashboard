@@ -12,6 +12,7 @@
 #include <ESP8266WebServer.h>
 #include <DNSServer.h>
 #include <ArduinoJson.h>
+#include <Updater.h>
 
 static ESP8266WebServer server(80);
 static DNSServer dns;
@@ -20,6 +21,58 @@ static enum { STA_IDLE, STA_CONNECTING, STA_CONNECTED, STA_FAILED } staState = S
 static uint32_t staStart, restartAt = 0;
 static bool staRetried = false;   // the post-save connection has already switched PHY once
 static SensorData psd;
+static void touch();
+static String updateToken;
+static bool updating = false, updateOk = false;
+static String updateError;
+
+// Updates are available only through the physically enabled, password-protected AP.
+static bool updateAuthorized() {
+  return server.client().localIP() == AP_IP &&
+         server.header("X-Update-Token") == updateToken;
+}
+static void handleUpdateUpload() {
+  touch();
+  HTTPUpload& upload = server.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    updateOk = false;
+    updateError = "";
+    if (!updateAuthorized()) { updateError = "Connect to the device hotspot and reload the page"; return; }
+    if (updating || restartAt) { updateError = "Device is busy; reset and try again"; return; }
+    if (psd.vbat <= BAT_LOW_V) { updateError = "Battery too low; charge before updating"; return; }
+    if (!upload.filename.endsWith(".bin")) { updateError = "Select a firmware .bin file"; return; }
+    const uint32_t freeSpace = ESP.getFreeSketchSpace();
+    if (freeSpace <= 0x1000) { updateError = "Not enough OTA flash space"; return; }
+    updating = true;
+    if (!Update.begin((freeSpace - 0x1000) & 0xFFFFF000, U_FLASH)) {
+      updateError = Update.getErrorString(); updating = false;
+    }
+  } else if (upload.status == UPLOAD_FILE_WRITE && updating && !updateError.length()) {
+    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+      updateError = Update.getErrorString(); Update.end(); updating = false;
+    }
+  } else if (upload.status == UPLOAD_FILE_END && updating) {
+    updateOk = Update.end(true);
+    if (!updateOk) updateError = Update.getErrorString();
+    updating = false;
+  } else if (upload.status == UPLOAD_FILE_ABORTED && updating) {
+    Update.end(); updating = false; updateError = "Upload aborted";
+  }
+}
+static void handleUpdate() {
+  touch();
+  if (!updateAuthorized()) { server.send(403, "application/json", "{\"ok\":0,\"error\":\"Unauthorized\"}"); return; }
+  JsonDocument d;
+  d["ok"] = updateOk ? 1 : 0;
+  if (!updateOk) d["error"] = updateError.length() ? updateError : "No firmware uploaded";
+  String out; serializeJson(d, out);
+  server.sendHeader("Connection", "close");
+  server.send(updateOk ? 200 : 400, "application/json", out);
+  if (updateOk) {
+    rtc.tlsSessionOk = 0; rtc.contentDirty = 1; rtc.forceFull = 1; rtcSave();
+    restartAt = millis() + 1500;
+  }
+}
 
 static String apIp() { return AP_IP.toString(); }
 static void redirectHome() { server.sendHeader("Location", "http://" + apIp() + "/", true); server.send(302, "text/plain", ""); }
@@ -63,6 +116,7 @@ static void handleConfig() {
   d["ntop"] = cfg.nightTopbar; d["bat"] = cfg.batShowPercent; d["rot"] = cfg.rotation;
   d["lang"] = cfg.lang;
   d["pen"] = cfg.portalEnable; d["purl"] = cfg.portalUrl; d["puser"] = cfg.portalUser; d["pfields"] = cfg.portalFields; d["pextra"] = cfg.portalExtra; d["pok"] = cfg.portalOk;
+  if (server.client().localIP() == AP_IP) d["updateToken"] = updateToken;
   d["configured"] = cfg.configured; d["fw"] = FW_VERSION;
   d["vbat"] = serialized(String(psd.vbat, 2)); d["t"] = serialized(String(psd.temp, 1)); d["h"] = serialized(String(psd.humi, 0)); d["rtc"] = cfg.rtcTypeKnown;
   String out; serializeJson(d, out); server.send(200, "application/json", out);
@@ -176,6 +230,11 @@ void portalRun() {
   dns.setErrorReplyCode(DNSReplyCode::NoError);
   dns.start(53, "*", AP_IP);
   LOG("portal: AP %s up, ip %s", AP_SSID, apIp().c_str());
+  char token[33];
+  snprintf(token, sizeof(token), "%08lx%08lx%08lx%08lx", (unsigned long)os_random(), (unsigned long)os_random(), (unsigned long)os_random(), (unsigned long)os_random());
+  updateToken = token;
+  server.collectHeaders("X-Update-Token");
+  server.on("/api/update", HTTP_POST, handleUpdate, handleUpdateUpload);
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/scan", HTTP_GET, handleScan);
   server.on("/api/config", HTTP_GET, handleConfig);
@@ -216,8 +275,8 @@ void portalRun() {
         { char b[80]; snprintf(b, sizeof(b), TR(S_PORTAL_FAILED), cfg.ssid); uiPortalScreen(AP_SSID, AP_PASS, apIp().c_str(), b); }
       }
     }
-    if (restartAt && millis() > restartAt) { delay(200); ESP.restart(); }
-    if (millis() - lastActivity > PORTAL_TIMEOUT_MS) {
+    if (!updating && restartAt && millis() > restartAt) { delay(200); ESP.restart(); }
+    if (!updating && millis() - lastActivity > PORTAL_TIMEOUT_MS) {
       LOG("portal: timeout -> sleep");
       uiMessage(TR(S_PORTAL_TIMEOUT_1), TR(S_PORTAL_TIMEOUT_2));
       uiEnd(); WiFi.mode(WIFI_OFF); ESP.deepSleep(0);

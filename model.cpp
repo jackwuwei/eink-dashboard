@@ -46,6 +46,14 @@ bool modelParse(const char* json, Dash& d) {
     x.pct = (uint8_t)constrain((int)(c["pct"] | 0), 0, 100);
     cpy(x.reset, sizeof(x.reset), c["r"] | "");
   }
+  cpy(d.codexNote, sizeof(d.codexNote), doc["codex_note"] | "");
+  for (JsonObject c : doc["codex"].as<JsonArray>()) {
+    if (d.nCodexLimits >= 2) break;
+    DashLimit& x = d.codexLimits[d.nCodexLimits++];
+    cpy(x.label, sizeof(x.label), c["l"] | "");
+    x.pct = (uint8_t)constrain((int)(c["pct"] | 0), 0, 100);
+    cpy(x.reset, sizeof(x.reset), c["r"] | "");
+  }
   for (JsonObject e2 : doc["env"].as<JsonArray>()) {
     if (d.nEnv >= 4) break;
     DashEnv& x = d.env[d.nEnv++];
